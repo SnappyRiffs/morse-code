@@ -1,14 +1,23 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
+using InTheHand.Net.Sockets;
+using InTheHand.Net.Bluetooth;
 
 class MorseProgram
 {
     static int unit = 200; // ms per Morse unit
     static Dictionary<int, string[]> program = new();
+    static BluetoothClient btClient;
+    static System.IO.Stream btStream;
 
     static void Main()
     {
+        Console.WriteLine("Enter Arduino Bluetooth MAC (like 001122334455):");
+        string mac = Console.ReadLine();
+        SetupBluetooth(mac);
+
         // Example "program"
         program[10] = new[] { "sot", "dot", "intra", "dot", "intra", "dash", "short", "dot", "intra", "dot", "intra", "dash", "eot" };
         program[20] = new[] { "goto", "10" };
@@ -24,7 +33,7 @@ class MorseProgram
             }
 
             string[] tokens = program[line];
-            bool jumped = false; // tracks if we did a goto
+            bool jumped = false;
 
             for (int i = 0; i < tokens.Length; i++)
             {
@@ -59,29 +68,53 @@ class MorseProgram
                         break;
 
                     case "goto":
-                        line = int.Parse(tokens[++i]); // move to target line
+                        line = int.Parse(tokens[++i]);
                         jumped = true;
                         break;
                 }
 
-                if (jumped) break; // stop processing rest of line
+                if (jumped) break;
             }
 
             if (!jumped)
             {
-                line += 10; // go to next line
+                line += 10;
             }
         }
+
+        btStream?.Close();
+        btClient?.Close();
+    }
+
+    static void SetupBluetooth(string macAddress)
+    {
+        BluetoothAddress address = BluetoothAddress.Parse(macAddress);
+        Guid serviceClass = BluetoothService.SerialPort;
+
+        btClient = new BluetoothClient();
+        btClient.Connect(new BluetoothEndPoint(address, serviceClass));
+        btStream = btClient.GetStream();
+
+        Console.WriteLine("Connected to Arduino via Bluetooth.");
     }
 
     static void SendSignal(int units)
     {
         Console.WriteLine($"Signal ON for {units} units");
-        // TODO: Bluetooth send ON
+        if (btStream != null)
+        {
+            byte[] on = Encoding.ASCII.GetBytes("1");
+            btStream.Write(on, 0, on.Length);
+        }
+
         Thread.Sleep(units * unit);
 
         Console.WriteLine("Signal OFF");
-        // TODO: Bluetooth send OFF
+        if (btStream != null)
+        {
+            byte[] off = Encoding.ASCII.GetBytes("0");
+            btStream.Write(off, 0, off.Length);
+        }
     }
 
     static void Pause(int units)
